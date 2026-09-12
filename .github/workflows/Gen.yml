@@ -15,47 +15,70 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'  # or any supported version >=3.9,<4.0
+          python-version: '3.11'
 
-      - name: Instalar dependencias
+      - name: Instalar paquetes del sistema (herramientas útiles)
         run: |
           set -euxo pipefail
-          python -m pip install --upgrade pip
-          # instalar sebaubuntu_libs necesario para twrpdtgen (no silenciar errores)
+          sudo apt-get update
+          sudo apt-get install -y git wget unzip zip file build-essential python3-distutils \
+            android-tools-adb android-tools-fastboot lz4 binwalk brotli liblz4-tool
+
+      - name: Instalar dependencias Python y twrpdtgen/sebaubuntu_libs
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip setuptools wheel
+          # instalar la librería requerida que contiene sebaubuntu_libs.libprop
           python -m pip install --upgrade sebaubuntu_libs
-          # instalar twrpdtgen (versión fijada)
-          python -m pip install --upgrade twrpdtgen==2.2
+          # usar la versión más reciente de twrpdtgen desde PyPI; si necesitas la última del repo, cambia a git+https
+          python -m pip install --upgrade twrpdtgen
+          # si twrpdtgen falla con Unisoc, intenta instalar la versión del repo upstream:
+          # python -m pip install --upgrade git+https://github.com/TeamWin/twrpdtgen.git
 
-      - name: Descargar vendor_boot
+      - name: Descargar vendor_boot (o boot/recovery)
         run: |
           set -euxo pipefail
-          # usar curl con -f para fallar en 4xx/5xx; -L para seguir redirecciones
           if command -v curl >/dev/null 2>&1; then
             curl -fLo vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
           else
-            # fallback a wget si curl no está disponible
             wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
           fi
 
-      - name: Generar Árbol de Dispositivo
+      - name: Generar Árbol de Dispositivo (primera pasada)
         run: |
           set -euxo pipefail
           mkdir -p out
-          python -m twrpdtgen -o ./out/ vendor_boot_b.bin
+          python -m twrpdtgen -o ./out/ vendor_boot_b.bin || true
+          # si la primera pasada falla por compatibilidad con Unisoc, reinstalamos las últimas fuentes y lo reintentamos
+          if [ ! -d out ] || [ "$(ls -A out || true)" = "" ]; then
+            echo "Salida vacía: reintentando con twrpdtgen desde GitHub y sebaubuntu_libs desde GitHub"
+            python -m pip install --upgrade --force-reinstall git+https://github.com/TeamWin/twrpdtgen.git
+            python -m pip install --upgrade --force-reinstall git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git
+            python -m twrpdtgen -o ./out/ vendor_boot_b.bin
+          fi
 
-      - name: Comprimir Resultado
+      - name: Mostrar contenido de out (para debugging)
         run: |
           set -euxo pipefail
+          ls -la out || true
+          find out -maxdepth 2 -type f -print || true
+
+      - name: Comprimir Resultado
+        if: always()
+        run: |
+          set -euxo pipefail
+          mkdir -p out
           cd ./out
-          zip -r -9 DeviceTree.zip ./*
+          zip -r -9 DeviceTree.zip ./* || true
 
       - name: Subir Release
+        if: always()
         uses: softprops/action-gh-release@v1
         with:
           files: |
             ./out/DeviceTree.zip
           name: TWRP_Device_Tree-${{ github.run_id }}
           tag_name: twrp-dt-${{ github.run_id }}
-          body: Árbol de dispositivo generado para Infinix X6525.
+          body: Árbol de dispositivo generado para Unisoc T606 (Infinix X6525 u otro modelo).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
