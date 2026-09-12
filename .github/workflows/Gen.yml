@@ -76,5 +76,22 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          if [ -d out ] && [ "$(ls -A out || true)" != "" ];](#)
-
+          if [ -d out ] && [ "$(ls -A out || true)" != "" ]; then
+            cd out
+            zip -r -9 DeviceTree.zip ./* || true
+          else
+            echo "No hay archivos en out; saltando compresión"
+          fi
+
+      - name: Subir Release
+        if: always()
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./out/DeviceTree.zip
+          name: TWRP_Device_Tree-${{ github.run_id }}
+          tag_name: twrp-dt-${{ github.run_id }}
+          body: |
+            Árbol de dispositivo generado para Unisoc T606 (Infinix X6525 u otro modelo).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
