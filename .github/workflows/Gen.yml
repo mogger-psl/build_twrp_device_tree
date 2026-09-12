@@ -1,16 +1,8 @@
-name: 生成TWRP设备树
+name: Generar Árbol de Dispositivo TWRP
 
 on:
   workflow_dispatch:
-    inputs:
-      PY:
-        description: 'Python3版本（推荐3.6/3.9）'
-        required: true
-        default: '3.9'
-      IMG:
-        description: 'IMG直链'
-        required: true
-        default: ''
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,40 +10,40 @@ jobs:
       - name: Check Out
         uses: actions/checkout@v3
 
-      - name: 准备环境
+      - name: Preparar Entorno
         run: |
           sudo apt update
-          sudo apt -y install cpio wget
+          sudo apt -y install cpio wget zip
 
-      - name: 准备Python3
+      - name: Configurar Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ github.event.inputs.PY }}
+          python-version: '3.9'
           cache: 'pip'
-          
-      - name: 准备twrpdtgen
-        run: pip3 install -r requirements.txt
-        
-      - name: 下载
-        run: wget ${{ github.event.inputs.IMG }}
-        
-      - name: 跑
+
+      - name: Instalar twrpdtgen
+        run: pip3 install twrpdtgen==2.2
+
+      - name: Descargar vendor_boot
+        run: wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+
+      - name: Generar Árbol de Dispositivo
         run: |
           mkdir out
-          python3 -m twrpdtgen -o ./out/ *.img
-          
-      - name: 打压缩包
+          python3 -m twrpdtgen -o ./out/ vendor_boot_b.bin
+
+      - name: Comprimir Resultado
         run: |
           cd ./out
           zip -r -9 DeviceTree.zip ./*
-          
-      - name: Release
+
+      - name: Subir Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             ./out/DeviceTree.zip
           name: TWRP_Device_Tree-${{ github.run_id }}
           tag_name: ${{ github.run_id }}
-          body: DeviceTree 4 TWRP
+          body: Árbol de dispositivo generado para Infinix X6525.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
