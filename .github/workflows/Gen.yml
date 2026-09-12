@@ -21,8 +21,24 @@ jobs:
           python-version: '3.9'
           cache: 'pip'
 
-      - name: Instalar twrpdtgen
-        run: pip3 install twrpdtgen==2.2
+      - name: Instalar dependencias de twrpdtgen
+        run: |
+          python3 -m pip install --upgrade pip
+          # Install sebaubuntu_libs from GitHub (not always on PyPI)
+          pip3 install git+https://github.com/sebaubuntu/sebaubuntu_libs.git
+          # Install the requested twrpdtgen version
+          pip3 install twrpdtgen==2.2
+          # Sanity check: import both packages to fail fast with a clear error if something is missing
+          python3 - <<'PY'
+import importlib, sys
+for mod in ("sebaubuntu_libs.libprop","twrpdtgen"):
+    try:
+        importlib.import_module(mod)
+    except Exception as e:
+        print(f"FAILED to import {mod}: {e}", file=sys.stderr)
+        raise
+print("Dependencies OK")
+PY
 
       - name: Descargar vendor_boot
         run: wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
