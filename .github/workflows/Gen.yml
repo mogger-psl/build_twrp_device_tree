@@ -33,9 +33,9 @@ jobs:
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          # Preferir PyPI (no requiere git). Ajusta versiones si es necesario.
+          # Instalar desde PyPI (no requiere git ni credenciales). Cambia versión si quieres.
           python -m pip install --upgrade "twrpdtgen==3.0.0" "sebaubuntu_libs==1.6.1" || true
-          # Evitar prompts de git en caso de fallback
+          # Evitar prompts de git en caso de fallback accidental
           export GIT_TERMINAL_PROMPT=0
 
       - name: Descargar vendor_boot (o boot/recovery)
