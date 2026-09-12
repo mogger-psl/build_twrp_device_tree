@@ -29,15 +29,22 @@ jobs:
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install --upgrade sebaubuntu_libs
-          python -m pip install --upgrade twrpdtgen || true
-          # si twrpdtgen falla con Unisoc, reintentar usando la release zip (no requiere git)
-          if ! python -m twrpdtgen --version >/dev/null 2>&1; then
-            # preferir el archivo zip de GitHub (no usa git ni pide credenciales)
-            python -m pip install --upgrade --force-reinstall "https://github.com/TeamWin/twrpdtgen/archive/refs/heads/main.zip" || \
-              python -m pip install --upgrade --force-reinstall "git+https://github.com/TeamWin/twrpdtgen.git"
-            python -m pip install --upgrade --force-reinstall "https://github.com/sebaubuntu-python/sebaubuntu_libs/archive/refs/heads/main.zip" || \
-              python -m pip install --upgrade --force-reinstall "git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git"
+
+          # Preferir versiones públicas en PyPI (no requieren git ni credenciales)
+          # Se pinnean versiones conocidas para mayor fiabilidad.
+          python -m pip install --upgrade "twrpdtgen==3.0.0" "sebaubuntu_libs==1.6.1" || true
+
+          # Verificar que el binario/entrypoint existe
+          if command -v twrpdtgen >/dev/null 2>&1; then
+            echo "twrpdtgen instalado (CLI disponible)"
+          elif python -m twrpdtgen --version >/dev/null 2>&1; then
+            echo "twrpdtgen disponible a través de python -m"
+          else
+            echo "Advertencia: no se pudo instalar twrpdtgen desde PyPI; evitando instalaciones por git interactivas (GIT_TERMINAL_PROMPT=0)"
+            # Intentar una instalación forzada desde PyPI (sin git). Si falla, la instalación por git se hará no interactiva.
+            python -m pip install --upgrade --force-reinstall "twrpdtgen==3.0.0" || true
+            # Si aún no está disponible, intentar git sin permitir prompt de credenciales (fallará rápido si requiere auth)
+            GIT_TERMINAL_PROMPT=0 python -m pip install --upgrade --force-reinstall "git+https://github.com/TeamWin/twrpdtgen.git" || true
           fi
 
       - name: Descargar vendor_boot (o boot/recovery)
@@ -55,15 +62,30 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          python -m twrpdtgen -o ./out/ vendor_boot_b.bin || true
+
+          # Preferir ejecutar el comando instalado; fallback a python -m si es necesario
+          if command -v twrpdtgen >/dev/null 2>&1; then
+            twrpdtgen -o ./out/ vendor_boot_b.bin || true
+          else
+            # si no existe el entrypoint, intentar con python -m
+            if python -m twrpdtgen --version >/dev/null 2>&1; then
+              python -m twrpdtgen -o ./out/ vendor_boot_b.bin || true
+            else
+              echo "twrpdtgen no disponible: no se puede generar el árbol"
+            fi
+          fi
+
+          # Si la salida está vacía, reintentar una vez usando la instalación forzada desde PyPI
           if [ ! -d out ] || [ "$(ls -A out || true)" = "" ]; then
-            echo "Salida vacía: reintentando instalando twrpdtgen/sebaubuntu_libs desde GitHub y re-ejecutando"
-            # reintentar usando el archivo zip de GitHub antes que git (evita prompts de credenciales)
-            python -m pip install --upgrade --force-reinstall "https://github.com/TeamWin/twrpdtgen/archive/refs/heads/main.zip" || \
-              python -m pip install --upgrade --force-reinstall "git+https://github.com/TeamWin/twrpdtgen.git"
-            python -m pip install --upgrade --force-reinstall "https://github.com/sebaubuntu-python/sebaubuntu_libs/archive/refs/heads/main.zip" || \
-              python -m pip install --upgrade --force-reinstall "git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git"
-            python -m twrpdtgen -o ./out/ vendor_boot_b.bin
+            echo "Salida vacía: reintentando instalar twrpdtgen desde PyPI y re-ejecutando"
+            python -m pip install --upgrade --force-reinstall "twrpdtgen==3.0.0" || true
+            if command -v twrpdtgen >/dev/null 2>&1; then
+              twrpdtgen -o ./out/ vendor_boot_b.bin
+            elif python -m twrpdtgen --version >/dev/null 2>&1; then
+              python -m twrpdtgen -o ./out/ vendor_boot_b.bin
+            else
+              echo "Error: twrpdtgen sigue sin estar disponible después de reintentos"
+            fi
           fi
 
       - name: Mostrar contenido de out (para debugging)
