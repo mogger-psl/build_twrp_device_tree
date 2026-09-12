@@ -17,12 +17,24 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar paquetes del sistema (herramientas útiles)
+           - name: Instalar paquetes del sistema (herramientas útiles)
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y git wget unzip zip file build-essential python3-distutils \
-            android-tools-adb android-tools-fastboot lz4 binwalk brotli liblz4-tool
+          sudo apt-get install -y git wget unzip zip file build-essential \
+            android-tools-adb android-tools-fastboot lz4 binwalk brotli liblz4-tool \
+            python3-venv
+
+      - name: Comprimir Resultado
+        if: always()
+        run: |
+          set -euxo pipefail
+          if [ -d out ] && [ "$(ls -A out || true)" != "" ]; then
+            cd ./out
+            zip -r -9 DeviceTree.zip ./*
+          else
+            echo "No hay archivos en out; saltando compresión"
+          fi
 
       - name: Instalar dependencias Python y twrpdtgen/sebaubuntu_libs
         run: |
