@@ -21,8 +21,8 @@ jobs:
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip
-          # instalar dependencias opcionales sin fallar el paso si no existen
-          python -m pip install sebaubuntu_libs || echo "sebaubuntu_libs no disponible, se continúa"
+          # instalar sebaubuntu_libs necesario para twrpdtgen (no silenciar errores)
+          python -m pip install --upgrade sebaubuntu_libs
           # instalar twrpdtgen (versión fijada)
           python -m pip install --upgrade twrpdtgen==2.2
 
