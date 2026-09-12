@@ -17,53 +17,44 @@ jobs:
         with:
           python-version: '3.11'
 
-           - name: Instalar paquetes del sistema (herramientas útiles)
+      - name: Instalar paquetes del sistema (herramientas útiles)
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y git wget unzip zip file build-essential \
             android-tools-adb android-tools-fastboot lz4 binwalk brotli liblz4-tool \
-            python3-venv
-
-      - name: Comprimir Resultado
-        if: always()
-        run: |
-          set -euxo pipefail
-          if [ -d out ] && [ "$(ls -A out || true)" != "" ]; then
-            cd ./out
-            zip -r -9 DeviceTree.zip ./*
-          else
-            echo "No hay archivos en out; saltando compresión"
-          fi
+            python3-venv curl
 
       - name: Instalar dependencias Python y twrpdtgen/sebaubuntu_libs
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          # instalar la librería requerida que contiene sebaubuntu_libs.libprop
           python -m pip install --upgrade sebaubuntu_libs
-          # usar la versión más reciente de twrpdtgen desde PyPI; si necesitas la última del repo, cambia a git+https
-          python -m pip install --upgrade twrpdtgen
-          # si twrpdtgen falla con Unisoc, intenta instalar la versión del repo upstream:
-          # python -m pip install --upgrade git+https://github.com/TeamWin/twrpdtgen.git
+          python -m pip install --upgrade twrpdtgen || true
+          # si twrpdtgen falla con Unisoc, reintentar con el repo upstream
+          if ! python -m twrpdtgen --version >/dev/null 2>&1; then
+            python -m pip install --upgrade --force-reinstall git+https://github.com/TeamWin/twrpdtgen.git
+            python -m pip install --upgrade --force-reinstall git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git
+          fi
 
       - name: Descargar vendor_boot (o boot/recovery)
         run: |
           set -euxo pipefail
+          URL="https://files.catbox.moe/ru8mxx.bin"
+          OUT="vendor_boot_b.bin"
           if command -v curl >/dev/null 2>&1; then
-            curl -fLo vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+            curl -fLo "$OUT" "$URL"
           else
-            wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+            wget -O "$OUT" "$URL"
           fi
 
-      - name: Generar Árbol de Dispositivo (primera pasada)
+      - name: Generar Árbol de Dispositivo (twrpdtgen)
         run: |
           set -euxo pipefail
           mkdir -p out
           python -m twrpdtgen -o ./out/ vendor_boot_b.bin || true
-          # si la primera pasada falla por compatibilidad con Unisoc, reinstalamos las últimas fuentes y lo reintentamos
           if [ ! -d out ] || [ "$(ls -A out || true)" = "" ]; then
-            echo "Salida vacía: reintentando con twrpdtgen desde GitHub y sebaubuntu_libs desde GitHub"
+            echo "Salida vacía: reintentando instalando twrpdtgen/sebaubuntu_libs desde GitHub y re-ejecutando"
             python -m pip install --upgrade --force-reinstall git+https://github.com/TeamWin/twrpdtgen.git
             python -m pip install --upgrade --force-reinstall git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git
             python -m twrpdtgen -o ./out/ vendor_boot_b.bin
@@ -79,9 +70,12 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          mkdir -p out
-          cd ./out
-          zip -r -9 DeviceTree.zip ./* || true
+          if [ -d out ] && [ "$(ls -A out || true)" != "" ]; then
+            cd out
+            zip -r -9 DeviceTree.zip ./* || true
+          else
+            echo "No hay archivos en out; saltando compresión"
+          fi
 
       - name: Subir Release
         if: always()
@@ -91,6 +85,7 @@ jobs:
             ./out/DeviceTree.zip
           name: TWRP_Device_Tree-${{ github.run_id }}
           tag_name: twrp-dt-${{ github.run_id }}
-          body: Árbol de dispositivo generado para Unisoc T606 (Infinix X6525 u otro modelo).
+          body: |
+            Árbol de dispositivo generado para Unisoc T606 (Infinix X6525 u otro modelo).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
