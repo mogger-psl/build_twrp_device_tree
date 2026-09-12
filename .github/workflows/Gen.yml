@@ -31,10 +31,13 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install --upgrade sebaubuntu_libs
           python -m pip install --upgrade twrpdtgen || true
-          # si twrpdtgen falla con Unisoc, reintentar con el repo upstream
+          # si twrpdtgen falla con Unisoc, reintentar usando la release zip (no requiere git)
           if ! python -m twrpdtgen --version >/dev/null 2>&1; then
-            python -m pip install --upgrade --force-reinstall git+https://github.com/TeamWin/twrpdtgen.git
-            python -m pip install --upgrade --force-reinstall git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git
+            # preferir el archivo zip de GitHub (no usa git ni pide credenciales)
+            python -m pip install --upgrade --force-reinstall "https://github.com/TeamWin/twrpdtgen/archive/refs/heads/main.zip" || \
+              python -m pip install --upgrade --force-reinstall "git+https://github.com/TeamWin/twrpdtgen.git"
+            python -m pip install --upgrade --force-reinstall "https://github.com/sebaubuntu-python/sebaubuntu_libs/archive/refs/heads/main.zip" || \
+              python -m pip install --upgrade --force-reinstall "git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git"
           fi
 
       - name: Descargar vendor_boot (o boot/recovery)
@@ -55,8 +58,11 @@ jobs:
           python -m twrpdtgen -o ./out/ vendor_boot_b.bin || true
           if [ ! -d out ] || [ "$(ls -A out || true)" = "" ]; then
             echo "Salida vacía: reintentando instalando twrpdtgen/sebaubuntu_libs desde GitHub y re-ejecutando"
-            python -m pip install --upgrade --force-reinstall git+https://github.com/TeamWin/twrpdtgen.git
-            python -m pip install --upgrade --force-reinstall git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git
+            # reintentar usando el archivo zip de GitHub antes que git (evita prompts de credenciales)
+            python -m pip install --upgrade --force-reinstall "https://github.com/TeamWin/twrpdtgen/archive/refs/heads/main.zip" || \
+              python -m pip install --upgrade --force-reinstall "git+https://github.com/TeamWin/twrpdtgen.git"
+            python -m pip install --upgrade --force-reinstall "https://github.com/sebaubuntu-python/sebaubuntu_libs/archive/refs/heads/main.zip" || \
+              python -m pip install --upgrade --force-reinstall "git+https://github.com/sebaubuntu-python/sebaubuntu_libs.git"
             python -m twrpdtgen -o ./out/ vendor_boot_b.bin
           fi
 
@@ -70,22 +76,5 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          if [ -d out ] && [ "$(ls -A out || true)" != "" ]; then
-            cd out
-            zip -r -9 DeviceTree.zip ./* || true
-          else
-            echo "No hay archivos en out; saltando compresión"
-          fi
-
-      - name: Subir Release
-        if: always()
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            ./out/DeviceTree.zip
-          name: TWRP_Device_Tree-${{ github.run_id }}
-          tag_name: twrp-dt-${{ github.run_id }}
-          body: |
-            Árbol de dispositivo generado para Unisoc T606 (Infinix X6525 u otro modelo).
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if [ -d out ] && [ "$(ls -A out || true)" != "" ];](#)
+
