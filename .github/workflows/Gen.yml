@@ -10,20 +10,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Out
-        uses: actions/checkout@v3
-
-      - name: Preparar Entorno
-        run: |
-          sudo apt update
-          sudo apt -y install cpio wget zip
-
-      - name: Configurar Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
-          cache: 'pip'
+          python-version: '3.11'  # or any supported version >=3.9,<4.0
 
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install sebaubuntu_libs
+          # pip install -r requirements.txt  # if you have other dependencies
+
+      # Continue with additional steps...
       - name: Instalar twrpdtgen
         run: |
           python -m pip install --upgrade pip
