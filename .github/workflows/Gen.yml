@@ -1,5 +1,8 @@
 name: Generar Árbol de Dispositivo TWRP
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
 
@@ -21,32 +24,19 @@ jobs:
           python-version: '3.9'
           cache: 'pip'
 
-      - name: Instalar dependencias de twrpdtgen
+      - name: Instalar twrpdtgen
         run: |
-          python3 -m pip install --upgrade pip
-          # Install sebaubuntu_libs from GitHub (not always on PyPI)
-          pip3 install git+https://github.com/sebaubuntu/sebaubuntu_libs.git
-          # Install the requested twrpdtgen version
-          pip3 install twrpdtgen==2.2
-          # Sanity check: import both packages to fail fast with a clear error if something is missing
-          python3 - <<'PY'
-import importlib, sys
-for mod in ("sebaubuntu_libs.libprop","twrpdtgen"):
-    try:
-        importlib.import_module(mod)
-    except Exception as e:
-        print(f"FAILED to import {mod}: {e}", file=sys.stderr)
-        raise
-print("Dependencies OK")
-PY
+          python -m pip install --upgrade pip
+          python -m pip install twrpdtgen==2.2
 
       - name: Descargar vendor_boot
-        run: wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+        run: |
+          wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
 
       - name: Generar Árbol de Dispositivo
         run: |
-          mkdir out
-          python3 -m twrpdtgen -o ./out/ vendor_boot_b.bin
+          mkdir -p out
+          python -m twrpdtgen -o ./out/ vendor_boot_b.bin
 
       - name: Comprimir Resultado
         run: |
@@ -59,7 +49,7 @@ PY
           files: |
             ./out/DeviceTree.zip
           name: TWRP_Device_Tree-${{ github.run_id }}
-          tag_name: ${{ github.run_id }}
+          tag_name: twrp-dt-${{ github.run_id }}
           body: Árbol de dispositivo generado para Infinix X6525.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
