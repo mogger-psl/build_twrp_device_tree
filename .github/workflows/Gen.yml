@@ -1,23 +1,27 @@
-name: Generar Árbol de Dispositivo TWRP
+name: Generar y publicar Device Tree en Releases
 
 permissions:
   contents: write
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Instalar paquetes del sistema (herramientas útiles)
+      - name: Instalar paquetes del sistema
         run: |
           set -euxo pipefail
           sudo apt-get update
@@ -25,27 +29,14 @@ jobs:
             android-tools-adb android-tools-fastboot lz4 binwalk brotli liblz4-tool \
             python3-venv curl
 
-      - name: Instalar dependencias Python y twrpdtgen/sebaubuntu_libs
+      - name: Instalar dependencias Python (no interactivas)
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-
-          # Preferir versiones públicas en PyPI (no requieren git ni credenciales)
-          # Se pinnean versiones conocidas para mayor fiabilidad.
+          # Preferir PyPI (no requiere git). Ajusta versiones si es necesario.
           python -m pip install --upgrade "twrpdtgen==3.0.0" "sebaubuntu_libs==1.6.1" || true
-
-          # Verificar que el binario/entrypoint existe
-          if command -v twrpdtgen >/dev/null 2>&1; then
-            echo "twrpdtgen instalado (CLI disponible)"
-          elif python -m twrpdtgen --version >/dev/null 2>&1; then
-            echo "twrpdtgen disponible a través de python -m"
-          else
-            echo "Advertencia: no se pudo instalar twrpdtgen desde PyPI; evitando instalaciones por git interactivas (GIT_TERMINAL_PROMPT=0)"
-            # Intentar una instalación forzada desde PyPI (sin git). Si falla, la instalación por git se hará no interactiva.
-            python -m pip install --upgrade --force-reinstall "twrpdtgen==3.0.0" || true
-            # Si aún no está disponible, intentar git sin permitir prompt de credenciales (fallará rápido si requiere auth)
-            GIT_TERMINAL_PROMPT=0 python -m pip install --upgrade --force-reinstall "git+https://github.com/TeamWin/twrpdtgen.git" || true
-          fi
+          # Evitar prompts de git en caso de fallback
+          export GIT_TERMINAL_PROMPT=0
 
       - name: Descargar vendor_boot (o boot/recovery)
         run: |
@@ -57,63 +48,53 @@ jobs:
           else
             wget -O "$OUT" "$URL"
           fi
+          ls -lh "$OUT"
 
-      - name: Generar Árbol de Dispositivo (twrpdtgen)
+      - name: Generar Device Tree (twrpdtgen)
         run: |
           set -euxo pipefail
           mkdir -p out
-
-          # Preferir ejecutar el comando instalado; fallback a python -m si es necesario
+          # Preferir el entrypoint instalado
           if command -v twrpdtgen >/dev/null 2>&1; then
-            twrpdtgen -o ./out/ vendor_boot_b.bin || true
+            twrpdtgen -o ./out/ vendor_boot_b.bin
+          elif python -m twrpdtgen --version >/dev/null 2>&1; then
+            python -m twrpdtgen -o ./out/ vendor_boot_b.bin
           else
-            # si no existe el entrypoint, intentar con python -m
-            if python -m twrpdtgen --version >/dev/null 2>&1; then
-              python -m twrpdtgen -o ./out/ vendor_boot_b.bin || true
-            else
-              echo "twrpdtgen no disponible: no se puede generar el árbol"
-            fi
-          fi
-
-          # Si la salida está vacía, reintentar una vez usando la instalación forzada desde PyPI
-          if [ ! -d out ] || [ "$(ls -A out || true)" = "" ]; then
-            echo "Salida vacía: reintentando instalar twrpdtgen desde PyPI y re-ejecutando"
+            echo "twrpdtgen no instalado; intentando instalar forzado desde PyPI"
             python -m pip install --upgrade --force-reinstall "twrpdtgen==3.0.0" || true
             if command -v twrpdtgen >/dev/null 2>&1; then
               twrpdtgen -o ./out/ vendor_boot_b.bin
-            elif python -m twrpdtgen --version >/dev/null 2>&1; then
-              python -m twrpdtgen -o ./out/ vendor_boot_b.bin
             else
-              echo "Error: twrpdtgen sigue sin estar disponible después de reintentos"
+              echo "ERROR: twrpdtgen no disponible tras reintento" >&2
+              exit 1
             fi
           fi
 
-      - name: Mostrar contenido de out (para debugging)
+      - name: Verificar salida
         run: |
           set -euxo pipefail
-          ls -la out || true
-          find out -maxdepth 2 -type f -print || true
-
-      - name: Comprimir Resultado
-        if: always()
-        run: |
-          set -euxo pipefail
-          if [ -d out ] && [ "$(ls -A out || true)" != "" ]; then
-            cd out
-            zip -r -9 DeviceTree.zip ./* || true
-          else
-            echo "No hay archivos en out; saltando compresión"
+          if [ ! -d out ] || [ "$(ls -A out || true)" = "" ]; then
+            echo "No se generaron archivos en out" >&2
+            ls -la || true
+            exit 1
           fi
+          ls -la out
+          find out -maxdepth 2 -type f -print
 
-      - name: Subir Release
-        if: always()
+      - name: Empaquetar DeviceTree.zip
+        run: |
+          set -euxo pipefail
+          cd out
+          zip -r -9 DeviceTree.zip ./*
+
+      - name: Crear/Actualizar Release y subir DeviceTree.zip
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            ./out/DeviceTree.zip
+          files: ./out/DeviceTree.zip
           name: TWRP_Device_Tree-${{ github.run_id }}
           tag_name: twrp-dt-${{ github.run_id }}
           body: |
-            Árbol de dispositivo generado para Unisoc T606 (Infinix X6525 u otro modelo).
+            Árbol de dispositivo generado automáticamente.
+            Run: ${{ github.run_id }} - Commit: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
