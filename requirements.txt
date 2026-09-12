@@ -1,1 +1,3 @@
-twrpdtgen
+sebaubuntu_libs
+
+twrpdtgen==2.2
