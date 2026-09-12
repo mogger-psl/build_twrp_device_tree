@@ -11,34 +11,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'  # or any supported version >=3.9,<4.0
 
-      - name: Install dependencies
+      - name: Instalar dependencias
         run: |
-          pip install --upgrade pip
-          pip install sebaubuntu_libs
-          # pip install -r requirements.txt  # if you have other dependencies
-
-      # Continue with additional steps...
-      - name: Instalar twrpdtgen
-        run: |
+          set -euxo pipefail
           python -m pip install --upgrade pip
-          python -m pip install twrpdtgen==2.2
+          # instalar dependencias opcionales sin fallar el paso si no existen
+          python -m pip install sebaubuntu_libs || echo "sebaubuntu_libs no disponible, se continúa"
+          # instalar twrpdtgen (versión fijada)
+          python -m pip install --upgrade twrpdtgen==2.2
 
       - name: Descargar vendor_boot
         run: |
-          wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+          set -euxo pipefail
+          # usar curl con -f para fallar en 4xx/5xx; -L para seguir redirecciones
+          if command -v curl >/dev/null 2>&1; then
+            curl -fLo vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+          else
+            # fallback a wget si curl no está disponible
+            wget -O vendor_boot_b.bin "https://files.catbox.moe/ru8mxx.bin"
+          fi
 
       - name: Generar Árbol de Dispositivo
         run: |
+          set -euxo pipefail
           mkdir -p out
           python -m twrpdtgen -o ./out/ vendor_boot_b.bin
 
       - name: Comprimir Resultado
         run: |
+          set -euxo pipefail
           cd ./out
           zip -r -9 DeviceTree.zip ./*
 
